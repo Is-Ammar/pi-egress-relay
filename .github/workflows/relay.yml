@@ -1,0 +1,37 @@
+name: relay
+on:
+  workflow_dispatch:
+    inputs:
+      req:
+        description: base64 of JSON request spec
+        required: true
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: egress ip
+        run: curl -sS --max-time 15 https://api.ipify.org; echo
+      - name: relay
+        env:
+          REQ: ${{ github.event.inputs.req }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, subprocess, sys
+          spec = json.loads(base64.b64decode(os.environ['REQ']).decode())
+          url    = spec['url']
+          method = spec.get('method','GET').upper()
+          hdrs   = spec.get('headers',{})
+          body   = spec.get('body')
+          cmd = ['curl','-sS','-i','--max-time','45','-X',method,url]
+          for k,v in hdrs.items():
+              cmd += ['-H', f'{k}: {v}']
+          if body is not None:
+              cmd += ['--data-binary', body]
+          print('=== CMD ===', ' '.join(x if ' ' not in x else repr(x) for x in cmd), flush=True)
+          r = subprocess.run(cmd, capture_output=True)
+          out = r.stdout
+          print('=== RELAY_BEGIN ===', flush=True)
+          print(base64.b64encode(out).decode(), flush=True)
+          print('=== RELAY_END ===', flush=True)
+          print('=== STDERR ===', r.stderr.decode(errors='replace'), flush=True)
+          PY
